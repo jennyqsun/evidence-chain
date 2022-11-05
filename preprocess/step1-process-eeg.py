@@ -39,7 +39,7 @@ datadir = '/ssd/rwchain-all/round2/'
 behdir = datadir + 'rwchain-beh/'
 eegdir = datadir + 'rwchain-eeg/'
 subj = '106'
-ses = 2
+ses = 1
 # read and concatenance .csv file of the behavioral data
 onlyfile_s1 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses1' in f and '#' not in f]
 onlyfile_s2 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses2' in f and '#' not in f]
@@ -197,9 +197,18 @@ def extractData(filename):
 
 fileName.sort()
 myevent0,  currydata0, eegdata0, sr, photocell0, labels, chanloc, stimonset0,pcpos0 = extractData(fileName[0])
+
+# uncomment this line for s106, block 0.
+# stimonset0 = stimonset0[stimonset0>sr*150]
+# pcpos0 = pcpos0[pcpos0>sr*150]
+# photocell0[0:int(sr*150)]  = 0
+# eegdata0[int(sr*150):,:] =0
+# myevent0[myevent0[:,0]<sr*150,:] = 0
+
 myevent1,  currydata1, eegdata1, _, photocell1, _, _, stimonset1,pcpos1 = extractData(fileName[1])
 
 photocell = np.hstack((photocell0,photocell1))
+
 tstart = len(photocell0)
 myevent1[:,0] = myevent1[:,0] + tstart
 myevent = np.vstack((myevent0, myevent1))
