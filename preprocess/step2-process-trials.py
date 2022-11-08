@@ -36,14 +36,14 @@ import timeop
 datadir = '/ssd/rwchain-all/round2/'
 behdir = datadir + 'rwchain-beh/'
 eegdir = datadir + 'rwchain-eeg/'
-subj = '106'
+subj = '103'
 
 filedir = eegdir + 's' + subj + '/'
 fnames = [filename for filename in os.listdir(filedir) if 'epoched' in filename]
 fnames.sort()
 print(len(fnames), 'files')
 
-f = 2
+f = 3
 eegfile = hdf5storage.loadmat(filedir + fnames[f])
 print(filedir + fnames[f])
 stimDur = eegfile['stimDur']
@@ -58,44 +58,90 @@ rt = eegfile['rt']
 sr = eegfile['sr']
 stimDur = eegfile['stimDur']
 
-# step 1: let's downsample the data
-eeg = eeg[:,::2,:]
-sr = 1000
+nChans = eeg.shape[-1]
+# step 1:  downsample the data
+# check the sampling rate
+print('sampling rate', sr)
 trialDur = eeg.shape[1]
 print(trialDur, 'ms per trial')
 nTrial = len(eeg)
 
 
-# step 3: keep the data 1s prestim, 1s after rt, rest of nan
+# step 2: keep the data 1s prestim, 1s after rt, rest is nan
 eegN = np.zeros_like(eeg)
 for trial in range(nTrial):
     tend = int(1000+rt[trial]+1000)
     eegN[trial,:tend,:] = eeg[trial,:tend,:]
     eegN[trial, tend:, :] = np.nan
 
+# step 3: identify any obvious bad channel that exceeds 100 mV more th an 20% of the time
+channelArtifact = np.sum(np.abs(eegN)>100, axis=(0,1))
+# remove any channel if more than 20% of the time it's >100
+badchan = np.where(channelArtifact> 0.2*np.sum(~np.isnan(eegN[:,:,0])))
+print('badchan identification: ', badchan)
+maskchan, masktrial = np.ones(eegN.shape[2],bool), np.ones(eegN.shape[0],bool)
+maskchan[badchan] = False
 
 
+# step 4:  Identify bad trials by standard deviation
+eegstd = np.nanstd(eegN, axis=1)   # get the std over time for each trial, each channel
+chanstd = np.nansum(eegstd, axis=0)  # get the std of each channel over trials
+trialstd = np.nansum(eegstd, axis=1)  # get the std of each trial over channel
 
-# step 3:  Identify bad trials by standard deviation
-eegstd = np.nanstd(eegN, axis=1)
-chanstd = np.nansum(eegstd, axis=0)
-trialstd = np.nansum(eegstd, axis=1)
+
+# threshhold trials by standard deviation criteria and remove them.
+# therhold channels by standard devaition criteria
 
 var_threshold = 2.5
+chan_threshold = 2.5
 ntrials = 50
 
 badtrials_eeg = np.where(trialstd / np.median(trialstd) > var_threshold)[0]
 goodtrials = np.setdiff1d(range(ntrials), badtrials_eeg)
 badchan_eeg = np.where(chanstd/np.median(chanstd) > chan_threshold)[0]
+print('bad trials', badtrials_eeg)
+print('bad chans', badchan_eeg)
+
+masktrial[badtrials_eeg] = False
+maskchan[badchan_eeg] = False
+
+# step 5: mask the trials where rt is invalid or <300
+nortTrials = np.where((rt == -999) | (rt <=300))
+masktrial[nortTrials] = False
+
+#
+# if the epoch before maxRT is larger then a number, reject
+threshold = 200
+badind = np.where(np.max(np.abs(eegN[:,1000:int(np.median(rt+1000)),maskchan]),axis=(-1,-2)) > threshold)[0]
+masktrial[badind] = False
+
+print('good trials: ', sum(masktrial))
+print('good chans: ', sum(maskchan))
+
+# Step 6: RUN ICA analysis to find and remove components correlated to eye blinks
+# run ICA
+eegN = eegN.astype(float)
+eeg_trial = eegN[masktrial,:,:]
+tTotal = np.sum(~np.isnan(eeg_trial[:,:,0]))
+
+# concatenant the trials without NaN values
+eeg_combined=np.zeros((0,eeg_trial.shape[-1]))
+for i in range(sum(masktrial)):
+    trialRT = rt[masktrial][i]
+    trialEEG = eeg_trial[i,:,:]
+    trialEEG = trialEEG[0: sum(~np.isnan(eeg_trial[i,:,0])),:]  # get the nanvalue
+    eeg_combined = np.vstack((eeg_combined, trialEEG))
+# remove the mean before ICA
+eeg_combined = eeg_combined - np.tile(np.mean(eeg_combined, axis=1), (eeg_combined.shape[1],1)).T
+
+# run ICA
+ICA = FastICA(n_components=nChans, whiten=True)
+S = ICA.fit_transform(eeg_combined)
+A = ICA.mixing_
+W = ICA.components_
+dubious_chans = np.unique(np.concatenate((np.array(eyechans),badchan_eeg)))
 
 
-# step 2: identify the abs bad channel that exceeds 100 mV
-channelArtifact = np.nansum(np.abs(eegN)>100, axis=(0,-2))
-# remove any channel if more than 20% of the time it's >100
-badchan = np.where(channelArtifact> 0.2*eeg.shape[0]*eeg.shape[1])
-print('badchan: ', badchan)
-mask = np.ones(eeg.shape[2],bool)
-mask[badchan] = False
 
 
 
@@ -106,22 +152,25 @@ mask[badchan] = False
 
 
 
-# step 3:
-# get the std 1s prestim + 1s after rt
+# trial rejection by visual inpsection
+mask_trial = np.ones(eegN.shape[0],bool)
+mask_trial[rt==-999] = False
+ind = np.where(np.abs(eeg) >=100)
 
-chanstd = np.sum(eegstd[:, 0:nEEGchan], axis=0)
-trialstd = np.sum(eegstd[:, 0:nEEGchan], axis=1)
+fig, ax = plt.subplots(5,10,figsize=(35,20))
+for i, j in enumerate(ax.flat):
+    j.plot(eegN[:,:,mask][i,:,0:])
+    j.axvline(rt[i]+1000)
+    j.set_title(i)
+fig.suptitle('whole EEG trial -1200 to end with masked channels')
+fig.tight_layout()
+fig.show()
 
-if plot == "y":
-    fig, ax = plt.subplots(1, 2, figsize=(10, 6))
-    ax[0].plot(chanstd / np.median(chanstd), "ro")
-    ax[0].set_title("Channel Variability")
-    ax[0].set_xlabel("Channels")
-    ax[0].set_ylabel("Normalized Standard Deviation")
-    ax[0].grid()
-    ax[1].plot(trialstd / np.median(trialstd), "bo")
-    ax[1].set_xlabel("Trials")
-    ax[1].set_ylabel("Normalized Standard Deviation")
-    ax[1].set_title("Trial Variability")
-    ax[1].grid()
-    plt.show(block=False)
+
+
+
+
+
+
+
+

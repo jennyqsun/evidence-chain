@@ -38,8 +38,8 @@ and convert them into blocks
 datadir = '/ssd/rwchain-all/round2/'
 behdir = datadir + 'rwchain-beh/'
 eegdir = datadir + 'rwchain-eeg/'
-subj = '103'
-ses = 2
+subj = '102'
+ses = 1
 # read and concatenance .csv file of the behavioral data
 onlyfile_s1 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses1' in f and '#' not in f]
 onlyfile_s2 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses2' in f and '#' not in f]
@@ -206,13 +206,17 @@ if ses ==2:
 
 myevent,  currydata, eegdata, sr, photocell, labels, chanloc, stimonset,pcpos, nRecord = extractData(fileName[0])
 
-# # uncomment this line for s106, block 0.
-# realTstart = int(pcpos0[7]-5*sr)
-# stimonset0 = stimonset0[stimonset0>realTstart]
-# pcpos0 = pcpos0[pcpos0>realTstart]
-# photocell0 = photocell0[realTstart:]
-# eegdata0 = eegdata0[realTstart:,:]
-# myevent0 = myevent0[myevent0[:,0]>realTstart,:]
+# uncomment this line for s106, block 0.
+# realTstart = int(pcpos[7]-5*sr)
+# stimonset = stimonset[stimonset>realTstart]
+# stimonset = stimonset - realTstart
+# pcpos = pcpos[pcpos>realTstart]
+# pcpos -= realTstart
+# photocell = photocell[realTstart:]
+# eegdata = eegdata[realTstart:,:]
+# myevent = myevent[myevent[:,0]>realTstart,:]
+# myevent[:,0] = myevent[:,0] - realTstart
+
 df_b = mydf.iloc[int(nRecord)*250: int(nRecord)*250+250]
 trialPerBlock = 50
 numBlock = int(len(stimonset)/trialPerBlock)
