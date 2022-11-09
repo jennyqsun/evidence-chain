@@ -39,7 +39,7 @@ datadir = '/ssd/rwchain-all/round2/'
 behdir = datadir + 'rwchain-beh/'
 eegdir = datadir + 'rwchain-eeg/'
 subj = '102'
-ses = 1
+ses = 2
 # read and concatenance .csv file of the behavioral data
 onlyfile_s1 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses1' in f and '#' not in f]
 onlyfile_s2 = [f for f in listdir(behdir) if subj in f and 'csv' in f and 'ses2' in f and '#' not in f]
@@ -104,9 +104,12 @@ def getEEG(fname):
 
 # bandpass fitler
 def filter(datain,sr, low,low_stop, high, high_stop,gs):
-    sos, w, h = timeop.makefiltersos(sr, low, low_stop)
-    erpfilt_hi = signal.sosfiltfilt(sos,datain,axis=0,padtype='odd')
-    sos2, w2, h2 = timeop.makefiltersos(sr, high, high_stop, gs=gs)
+    # low pass filter
+    sos, w, h = timeop.makefiltersos(sr, low, low_stop, gp=3, gs=20)
+    erpfilt_hi = signal.sosfiltfilt(sos,datain,axis=0, padtype='odd')
+
+    # make high pass filter
+    sos2, w2, h2 = timeop.makefiltersos(sr, high, high_stop, gp=3, gs=12)
     eegdata = signal.sosfiltfilt(sos2,erpfilt_hi,axis=0,padtype='odd')
     return eegdata
 
@@ -161,6 +164,7 @@ print('reading' + str(fileName))
 
 def extractData(filename):
     currydata, eegdata, sr, photocell, labels, chanloc = getEEG(eegdir + 's' + subj + '/' + filename)
+    print('filter sr', sr)
     eegdata = filter(eegdata,sr,low = 45,low_stop = 55, high =1, high_stop = 0.25,gs=10)
 
     # pick a time winodw to make sure everything is recorded
@@ -421,9 +425,10 @@ for i in range(0,numBlock):
     if sr !=2000:
         print('wrong sr!!!')
         import scipy
+
         trials = scipy.signal.resample(trials, int(epochDur * 1000/sr), axis= 1)
         pctrials = scipy.signal.resample(pctrials, int(epochDur * 1000/sr), axis= 1)
-
+        # if wrong sr, change the trials space  in the next line 
     mydict = {'rt':rt,'resp':resp,'data':trials[:,::2,:],'stimDur':blockCond,'sr':1000,'prestimDur':1000*1,'df':df_block,\
               'labels':labels, 'chanloc':chanloc, 'photocell':pctrials[:,::2]}
     fname = 's' + subj +'_epoched_' + 'ses' + str(ses) + '_' +'block' + str(int(nRecord)*5+i) +'_'+str(int(blockCond * 1000)) + '.mat'

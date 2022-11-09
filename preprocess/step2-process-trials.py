@@ -25,7 +25,7 @@ from os import listdir
 import pickle
 from sklearn.decomposition import FastICA
 import hdf5storage
-
+import chanset
 
 # hnlpy repo pacakges
 sys.path.append('/home/jenny/hnlpy/')
@@ -43,7 +43,7 @@ fnames = [filename for filename in os.listdir(filedir) if 'epoched' in filename]
 fnames.sort()
 print(len(fnames), 'files')
 
-f = 3
+f = 0
 eegfile = hdf5storage.loadmat(filedir + fnames[f])
 print(filedir + fnames[f])
 stimDur = eegfile['stimDur']
@@ -58,12 +58,13 @@ rt = eegfile['rt']
 sr = eegfile['sr']
 stimDur = eegfile['stimDur']
 
+eyeChans = [0, 1, 2]   # Fp1, Fpz, Fp2
 nChans = eeg.shape[-1]
 # step 1:  downsample the data
 # check the sampling rate
 print('sampling rate', sr)
 trialDur = eeg.shape[1]
-print(trialDur, 'ms per trial')
+print(stimDur, 'ms per trial')
 nTrial = len(eeg)
 
 
@@ -132,43 +133,113 @@ for i in range(sum(masktrial)):
     trialEEG = trialEEG[0: sum(~np.isnan(eeg_trial[i,:,0])),:]  # get the nanvalue
     eeg_combined = np.vstack((eeg_combined, trialEEG))
 # remove the mean before ICA
+# common average referencing
 eeg_combined = eeg_combined - np.tile(np.mean(eeg_combined, axis=1), (eeg_combined.shape[1],1)).T
 
 # run ICA
-ICA = FastICA(n_components=nChans, whiten=True)
-S = ICA.fit_transform(eeg_combined)
+# only using the good chans, using bad chan takes forever to converge or does not converge
+print('running ICA...')
+ICA = FastICA(n_components=sum(maskchan)-5, whiten=True, fun = 'cube', max_iter = 10000000)
+S = ICA.fit_transform(eeg_combined[:,maskchan])
 A = ICA.mixing_
 W = ICA.components_
-dubious_chans = np.unique(np.concatenate((np.array(eyechans),badchan_eeg)))
+dubious_chans = np.unique(np.concatenate((np.array(eyeChans),np.where(~maskchan)[0])))
+
+# recover the signal
+recover= A @ S.T
+
+fig0, ax0 = plt.subplots(4,1)
+# original
+ax0[0].plot(eeg_combined[1000:20000,maskchan])
+
+#source
+ax0[1].plot(S[1000:20000])
+
+# let's remove the component
+ax0[2].plot(recover[:,1000:20000].T)
+fig0.suptitle('Recover signal')
+fig0.show()
+
+# compute correlations with eye channels and bad channels
+# compute correlations with eye channels
+ngoodchan = sum(maskchan)
+nICAchan = sum(maskchan)-5
+corrs = np.zeros((len(dubious_chans), nICAchan))
+for j in range(nICAchan):
+    for k in range(len(dubious_chans)):
+        corrs[k, j] = np.corrcoef(S[:, j], eeg_combined[:, dubious_chans[k]])[0, 1]
+# corrsmax = np.max(corrs, axis=0)
+# plt.plot(corrsmax)
+
+corr_threshold = 0.3
+channelcorr =np.sum(np.abs(corrs)>corr_threshold,axis=0)
+plt.plot(np.abs(corrs).T)
+goodcomponents =  channelcorr==0
+plt.ylabel('component correlations with bad chans')
+plt.show()
+print('good components: ', sum(goodcomponents))
+
+
+# detect which components are not too correlated with eye channels
+# goodcomponents = abs(corrsmax) < corr_threshold
+chancomponents = np.zeros(nICAchan)
+B = np.zeros(A.shape)
+for j in range(nICAchan):
+    B[:,j] = A[:,j]**2/np.sum(A[:,j]**2)
+    chancomponents[j] = np.max(B[:,j])
+    if (chancomponents[j] > 0.8):
+        goodcomponents[j] = False
+
+print('good components: ', sum(goodcomponents))
 
 
 
 
-
-
-
-
-
-
-
-
-# trial rejection by visual inpsection
-mask_trial = np.ones(eegN.shape[0],bool)
-mask_trial[rt==-999] = False
-ind = np.where(np.abs(eeg) >=100)
-
-fig, ax = plt.subplots(5,10,figsize=(35,20))
-for i, j in enumerate(ax.flat):
-    j.plot(eegN[:,:,mask][i,:,0:])
-    j.axvline(rt[i]+1000)
-    j.set_title(i)
-fig.suptitle('whole EEG trial -1200 to end with masked channels')
-fig.tight_layout()
+fig, ax = plt.subplots(sum(~goodcomponents)+3,1)
+ax[0].plot(eeg_combined[:,0])
+ax[1].plot(eeg_combined[:,1])
+ax[2].plot(eeg_combined[:,2])
+for i,cor in enumerate(np.where(~goodcomponents)[0]):
+    ax[i+3].plot(S[1000:20*8000,cor])
+fig.suptitle('corrleation between fp1 fp2 and components')
 fig.show()
 
 
+# recombine data without bad components.
+AT = A.T
+cleandata = S[:, goodcomponents] @ AT[goodcomponents, :]
 
 
+# visualize it
+ax0[3].plot(cleandata[1000:20000,:])
+fig0.show()
+
+
+
+
+
+# cleandata = signal.sosfiltfilt(sos,cleandata,axis=0,padtype='odd')
+
+
+# re-epoch the clean data, and insert the bad channel exlucded from ICA
+finaldata = np.zeros_like(eeg_trial[:,:,maskchan])
+tstart = 0
+for t_ in range(sum(masktrial)):
+    trialRT = rt[masktrial][t_]
+    tend = int(trialRT+1000+1000)
+    finaldata[t_,:tend,:] = cleandata[tstart:tstart+tend, :]
+    finaldata[t_, tend:, :] = np.nan
+    tstart = tstart+tend
+
+
+labels, positions, chans = chanset.chansets_neuroscan()
+
+
+fig, ax = plt.subplots(2)
+ax[0].plot(np.nanmean(eegN[:,1000:3000,chans], axis=0))
+
+ax[1].plot(np.nanmean(finaldata[:,1000:3000,chans], axis=0))
+fig.show()
 
 
 
