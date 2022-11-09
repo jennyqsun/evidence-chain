@@ -428,7 +428,7 @@ for i in range(0,numBlock):
 
         trials = scipy.signal.resample(trials, int(epochDur * 1000/sr), axis= 1)
         pctrials = scipy.signal.resample(pctrials, int(epochDur * 1000/sr), axis= 1)
-        # if wrong sr, change the trials space  in the next line 
+        # if wrong sr, change the trials space  in the next line
     mydict = {'rt':rt,'resp':resp,'data':trials[:,::2,:],'stimDur':blockCond,'sr':1000,'prestimDur':1000*1,'df':df_block,\
               'labels':labels, 'chanloc':chanloc, 'photocell':pctrials[:,::2]}
     fname = 's' + subj +'_epoched_' + 'ses' + str(ses) + '_' +'block' + str(int(nRecord)*5+i) +'_'+str(int(blockCond * 1000)) + '.mat'
