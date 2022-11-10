@@ -38,7 +38,7 @@ import timeop
 datadir = '/ssd/rwchain-all/round2/'
 behdir = datadir + 'rwchain-beh/'
 eegdir = datadir + 'rwchain-eeg/'
-subj = '102'
+subj = '106'
 
 filedir = eegdir + 's' + subj + '/'
 fnames = [filename for filename in os.listdir(filedir) if 'epoched' in filename]
@@ -47,7 +47,9 @@ print(len(fnames), 'files')
 # uniqueCond = np.array((100,250,500,50))
 # cond = uniqueCond[0]
 # files = [f for f in fnames if '_' + str(cond) in f]
-
+# if 102
+if subj=='102':
+    fnames = fnames[0:5] + fnames[6:]
 for f in range(len(fnames)):
     print(filedir + fnames[f])
     eegfile = hdf5storage.loadmat(filedir + fnames[f])
@@ -148,33 +150,46 @@ for f in range(len(fnames)):
     # run ICA
     # only using the good chans, using bad chan takes forever to converge or does not converge
     # lower rank
-    lowerRank=5
+    lowerRank=4
     print('running ICA...')
-    ICA = FastICA(n_components=sum(maskchan)-lowerRank, whiten=True, fun = 'cube', max_iter = 10000000)
-    S = ICA.fit_transform(eeg_combined[:,maskchan])
+    # ICA = FastICA(n_components=sum(maskchan)-lowerRank, whiten=True, fun = 'cube', max_iter = 10000000)
+    # S = ICA.fit_transform(eeg_combined[:,maskchan])
+    # A = ICA.mixing_
+    # W = ICA.components_
+
+    # dubious_chans = np.unique(np.concatenate((np.array(eyeChans),np.where(~maskchan)[0])))
+    # dubious_chans = np.unique(np.concatenate((np.array(eyeChans),badchan[0])))
+
+    # try using all channels
+    ICA = FastICA(n_components=nChans-lowerRank, whiten=True, fun = 'cube', max_iter = 10000000)
+    S = ICA.fit_transform(eeg_combined[:,:])
     A = ICA.mixing_
     W = ICA.components_
     dubious_chans = np.unique(np.concatenate((np.array(eyeChans),np.where(~maskchan)[0])))
+    # dubious_chans = np.unique(np.concatenate((np.array(eyeChans),badchan[0])))
+
 
     # recover the signal
     recover= A @ S.T
 
     fig0, ax0 = plt.subplots(4,1)
     # original
-    ax0[0].plot(eeg_combined[1000:20000,maskchan])
+    # ax0[0].plot(eeg_combined[1000:20000,maskchan])
+    ax0[0].plot(eeg_combined[1000:20000,:])
 
     #source
     ax0[1].plot(S[1000:20000])
 
     # let's remove the component
     ax0[2].plot(recover[:,1000:20000].T)
-    fig0.suptitle('Recover signal')
-    fig0.show()
+    fig0.suptitle('Recover signal' +subj)
+    # fig0.show()
 
     # compute correlations with eye channels and bad channels
     # compute correlations with eye channels
-    ngoodchan = sum(maskchan)
-    nICAchan = sum(maskchan)-lowerRank   # use 5 fewer components for ICA than good channels
+
+    # nICAchan = sum(maskchan)-lowerRank   # use 5 fewer components for ICA than good channels
+    nICAchan = nChans - lowerRank
     corrs = np.zeros((len(dubious_chans), nICAchan))
     for j in range(nICAchan):
         for k in range(len(dubious_chans)):
@@ -182,11 +197,11 @@ for f in range(len(fnames)):
     # corrsmax = np.max(corrs, axis=0)
     # plt.plot(corrsmax)
 
-    corr_threshold = 0.3
+    corr_threshold = 0.4
     channelcorr =np.sum(np.abs(corrs)>corr_threshold,axis=0)
     plt.plot(np.abs(corrs).T)
     goodcomponents =  channelcorr==0
-    plt.ylabel('component correlations with bad chans')
+    plt.ylabel('component correlations with bad chans' +subj)
     plt.show()
     print('good components: ', sum(goodcomponents))
 
@@ -200,7 +215,10 @@ for f in range(len(fnames)):
         chancomponents[j] = np.max(B[:,j])
         if (chancomponents[j] > 0.8):
             goodcomponents[j] = False
+            print('removing a one channel IC',j)
         if (np.argmax(B[:, j])) <= 2:
+            if chancomponents[j] > 0.2:
+                print('removing an eye dominant IC', j)
             goodcomponents[j] = False
 
     print('good components: ', sum(goodcomponents), 'out of', nICAchan)
@@ -214,7 +232,7 @@ for f in range(len(fnames)):
     ax[2].plot(eeg_combined[:,2])
     for i,cor in enumerate(np.where(~goodcomponents)[0]):
         ax[i+3].plot(S[1000:20*8000,cor])
-    fig.suptitle('corrleation between fp1 fp2 and components')
+    fig.suptitle('corrleation between fp1 fp2 and components'  +subj)
     fig.show()
 
 
@@ -225,6 +243,8 @@ for f in range(len(fnames)):
 
     # visualize it
     ax0[3].plot(cleandata[1000:20000,:])
+    fig0.suptitle(subj)
+
     fig0.show()
 
 
@@ -238,11 +258,11 @@ for f in range(len(fnames)):
     # insert the bad channel exlucded from ICA for completion
     # for chan in np.where(~maskchan)[0]:
 
-    for chan in np.where(~maskchan)[0]:
-        print(chan)
-        chansignal = eeg_combined[:,chan]
-        cleandata = np.insert(cleandata, chan, chansignal, axis=1)
-
+    # for chan in np.where(~maskchan)[0]:
+    #     print(chan)
+    #     chansignal = eeg_combined[:,chan]
+    #     cleandata = np.insert(cleandata, chan, chansignal, axis=1)
+    #
 
     finaldata = np.zeros_like(eeg_trial)
     tstart = 0
@@ -258,10 +278,16 @@ for f in range(len(fnames)):
 
 
 
-
-
-
     labels, positions, chans = chanset.chansets_neuroscan()
+
+    fig, ax = plt.subplots(2)
+    ax[0].plot(np.nanmean(eegN[:,1000:2000,:], axis=0))
+
+    ax[1].plot(np.nanmean(finaldata[:,1000:2000,:], axis=0))
+    # ax[0].axvline(np.mean(rt))
+    # ax[1].axvline(np.mean(rt))
+    fig.suptitle('allchans plot'+subj)
+    fig.show()
 
 
     fig, ax = plt.subplots(2)
@@ -270,7 +296,7 @@ for f in range(len(fnames)):
     ax[1].plot(np.nanmean(finaldata[:,1000:2000,maskchan], axis=0))
     # ax[0].axvline(np.mean(rt))
     # ax[1].axvline(np.mean(rt))
-    fig.suptitle('maskchan plot')
+    fig.suptitle('maskchan plot'+subj)
     fig.show()
 
 
@@ -280,7 +306,7 @@ for f in range(len(fnames)):
     ax[1].plot(np.nanmean(finaldata[:,1000:2000,chans], axis=0))
     # ax[0].axvline(np.mean(rt))
     # ax[1].axvline(np.mean(rt))
-    fig.suptitle('98 chans plot')
+    fig.suptitle('98 chans plot'+subj)
     fig.show()
 
 
@@ -292,7 +318,7 @@ for f in range(len(fnames)):
     ax[1].plot(np.nanmean(finaldata[:,1000:2000,allChan], axis=0))
     # ax[0].axvline(np.mean(rt))
     # ax[1].axvline(np.mean(rt))
-    fig.suptitle('excluding very bad chans plot')
+    fig.suptitle('excluding very bad chans plot'+subj)
     fig.show()
 
 
@@ -310,9 +336,10 @@ for f in range(len(fnames)):
     eegfile['filter'] = 'low pass 40Hz (hard stop 40x 1.1), high pass 1Hz, hard stop 0.25.'
 
     print('saving ' + fnames[f] + '...')
-    hdf5storage.savemat(eegdir + 's' + subj + '/' + fnames[f].replace('epoched','clean') , eegfile, format='7.3',
+    hdf5storage.savemat(eegdir + 's' + subj + '/' + fnames[f].replace('epoched','clean2') , eegfile, format='7.3',
                         store_python_metadata=True)
     print('done!\n')
+
 # sos_lf, w, h = timeop.makefiltersos(sr, 20, 20*1.1, gp=3, gs=20)
 # cleandata = signal.sosfiltfilt(sos_lf, cleandata, axis=0, padtype='odd')
 #
