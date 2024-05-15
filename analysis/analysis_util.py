@@ -6,7 +6,6 @@ from color_util import *
 ##### equations ################
 
 
-
 def sigmoid(x, alpha=1, beta=0):
     return 1 / (1 + np.exp(-(alpha * x - beta)))
 
@@ -17,13 +16,14 @@ def get_gmeans(tpr, fpr):
 
 ##### process chain ############
 def get_abs_evidence(x):
-        return np.abs(x.cumsum(axis=1))
+    return np.abs(x.cumsum(axis=1))
+
 
 def get_evidence(x):
-        x_cumsum = x.cumsum(axis=1)
-        index_positive, index_negative = x_cumsum[:,-1]>=0, x_cumsum[:,-1]<0
-        x_cumsum[index_negative] = x_cumsum[index_negative] * -1
-        return x_cumsum 
+    x_cumsum = x.cumsum(axis=1)
+    index_positive, index_negative = x_cumsum[:, -1] >= 0, x_cumsum[:, -1] < 0
+    x_cumsum[index_negative] = x_cumsum[index_negative] * -1
+    return x_cumsum
 
 
 def get_race_counters(x_train):
@@ -100,6 +100,40 @@ def correct_samples_by_condition(df):
     return df
 
 
+def get_confirm_weights(chain):
+    output = [1]  # Start with the first element always being 1
+    cumsum = 1
+    # Start from the second element and compare with the previous one
+    for i in range(1, len(chain)):
+        if chain[i] == chain[i - 1]:
+            cumsum = cumsum + 1
+            output.append(cumsum)
+
+        else:
+            cumsum = 1
+            output.append(cumsum)
+
+    return np.array(output)
+
+
+def get_confirm_weights_discount(chain):
+    output = [1]  # Start with the first element always being 1
+    offset = False  # Counter for consecutive matches
+    cumsum = 1
+    # Start from the second element and compare with the previous one
+    for i in range(1, len(chain)):
+        if chain[i] == chain[i - 1]:
+            cumsum = cumsum + 1
+            output.append(cumsum)
+
+        else:
+            cumsum = 0
+            output.append(cumsum)
+            cumsum = 1
+
+    return np.array(output)
+
+
 ###### plotting functions  ############
 def plot_roc(
     fpr_list,
@@ -108,12 +142,14 @@ def plot_roc(
     position_of_samples,
     total_n_list,
     auc_cutoff=0.5,
-    label="number of samples", ax=None, fig=None
+    label="number of samples",
+    ax=None,
+    fig=None,
 ):
     if ax is None:
         fig, ax = plt.subplots(1, 1)
     else:
-        ax =ax
+        ax = ax
     color_list = get_color_list()
 
     for i in range(len(fpr_list)):
@@ -124,15 +160,16 @@ def plot_roc(
                     tpr_list[i],
                     label=f"{label}: {str(position_of_samples[i])}, auc={np.round(auc_list[i],2)}, n = {total_n_list[i]}",
                     linewidth=4,
-                    color=color_list[i]
+                    color=color_list[i],
+                    alpha=0.7,
                 )
             else:
                 ax.plot(
                     fpr_list[i],
                     tpr_list[i],
                     label=f"{label}: {str(position_of_samples[i])}, auc={np.round(auc_list[i],2)}, n = {total_n_list[i]}",
-                    color=color_list[i]
-
+                    color=color_list[i],
+                    alpha=0.7,
                 )
     ax.plot(np.linspace(0, 1), np.linspace(0, 1), "--", alpha=0.5)
     ax.legend(bbox_to_anchor=(1, 1, 0, 0))
