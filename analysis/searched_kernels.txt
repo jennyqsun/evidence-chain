@@ -1,0 +1,14 @@
+running: 
+sample 9, pos 8, dual 
+sample 9, pos 8, multiple 
+
+
+
+done: 
+sample 11, pos 10, single, dual, multiple
+sample 10, pos 9, single, dual,  
+sample 9, pos 8, single, 
+
+maybe later: force insignicant weights to 0
+
+Given the bound and look at the drift rate, see what do we get, 
