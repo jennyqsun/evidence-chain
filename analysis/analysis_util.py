@@ -18,6 +18,9 @@ def get_gmeans(tpr, fpr):
 def get_abs_evidence(x):
     return np.abs(x.cumsum(axis=1))
 
+def get_cumsum(x):
+    return x.cumsum(axis=1)
+
 
 def get_evidence(x):
     x_cumsum = x.cumsum(axis=1)
@@ -48,6 +51,19 @@ def get_counter(x):
         (pos, neg) for pos, neg in zip(counter_positive, counter_negative)
     ]
     return paired_counter
+
+
+def swap_couters(counter):
+    """swap the counters so that counter a is always the majority count"""
+    counter_list = [list(ele) for ele in counter]
+    for ind, item in enumerate(counter):
+        if item[0] < item[1]:
+            counter_list[ind][0], counter_list[ind][1] = (
+                counter_list[ind][1],
+                counter_list[ind][0],
+            )
+
+    return counter_list
 
 
 def get_max_runs(x_train):
@@ -145,6 +161,8 @@ def plot_roc(
     label="number of samples",
     ax=None,
     fig=None,
+    indices=None,
+
 ):
     if ax is None:
         fig, ax = plt.subplots(1, 1)
@@ -154,6 +172,15 @@ def plot_roc(
 
     for i in range(len(fpr_list)):
         if auc_list[i] >= auc_cutoff:
+            if indices is not None:
+                if i not in indices:
+                    ax.plot(
+                    fpr_list[i],
+                    tpr_list[i],
+                    color="grey",
+                    alpha=0.3,
+                )
+                    continue
             if i == np.argmax(auc_list):
                 ax.plot(
                     fpr_list[i],
@@ -161,7 +188,7 @@ def plot_roc(
                     label=f"{label}: {str(position_of_samples[i])}, auc={np.round(auc_list[i],2)}, n = {total_n_list[i]}",
                     linewidth=4,
                     color=color_list[i],
-                    alpha=0.7,
+                    alpha=0.7
                 )
             else:
                 ax.plot(
@@ -180,21 +207,22 @@ def plot_roc(
 
 
 def plot_roc_per_sample_position(
-    position_of_samples, auc_list_train=None, auc_list_test=None, fig=None, ax=None
+    position_of_samples, auc_list_train=None, auc_list_test=None, fig=None, ax=None, 
+    alpha=1,markeredgecolor=None, marker = None,
 ):
     if fig is None and ax is None:
         fig, ax = plt.subplots(1, 1)
     if auc_list_train is not None:
         ax.plot(
-            [i + 1 for i in position_of_samples], auc_list_train, "-o", label="Trainig"
+            [i + 1 for i in position_of_samples], auc_list_train, "-o", label="Trainig",alpha=alpha, marker =marker, markeredgecolor=markeredgecolor
         )
     if auc_list_test is not None:
-        ax.plot([i + 1 for i in position_of_samples], auc_list_test, "-o", label="Test")
+        ax.plot([i + 1 for i in position_of_samples], auc_list_test, "-o", label="Test",alpha=alpha,marker =marker, markeredgecolor=markeredgecolor)
 
     # ax.set_xticks([i+1 for i in position_of_samples])
 
     ax.set_xlabel("Sample")
     ax.set_ylabel("AUC")
     ax.set_ylim(0, 1)
-    fig.legend()
+    ax.legend()
     return fig, ax
